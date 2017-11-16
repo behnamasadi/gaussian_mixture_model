@@ -216,6 +216,10 @@ class GMMNode
             g.covariances[i * dim + h] = covariances[s](i,h);
       }
 
+
+       doRegression(eigendata,  means, weights , covariances);
+
+
       m_mix_publisher.publish(mix_msg);
       ROS_INFO("gmm: message sent.");
     }
@@ -260,6 +264,111 @@ class GMMNode
   // this thread will simply wait for shutdown
   // and unlock all the conditions variables
   boost::thread m_shutting_down_thread;
+
+
+    // this function compute PDF of X which has lenght of k
+    float computeNormalDistributionPDF(Eigen::VectorXf X, Eigen::VectorXf mean, Eigen::MatrixXf covariance)
+    {
+        float nominator, denominator,tmp;
+
+
+        Eigen::MatrixXf tmp_nominator_matrixXf;
+        tmp_nominator_matrixXf=( X.transpose()-mean.transpose() )  * covariance.inverse() *  (X-mean) ;
+        tmp=-0.5*tmp_nominator_matrixXf(0,0);
+        nominator=std::exp (tmp);
+
+        int k=X.rows();
+
+        tmp=std::pow(2*M_PI,k) *covariance.determinant();
+        denominator=std::pow( tmp, 0.5 );
+        return  (nominator/denominator);
+    }
+
+
+    //Xi is 2xn matrix, the first column is t and the second column is s
+    //means is a c++ vector of size k which contains eigen vector of size 2
+    void doRegression(Eigen::MatrixXf  xi, const std::vector<Eigen::VectorXf>  means, const std::vector<float>  weights , const std::vector<Eigen::MatrixXf>  covariances)
+    {
+        Eigen::VectorXf X;
+        Eigen::VectorXf mean;
+        Eigen::MatrixXf covariance;
+
+        Eigen::MatrixXf  out_xi;
+        out_xi.resize(xi.rows() ,xi.cols());
+        out_xi=Eigen::MatrixXf::Zero(xi.rows(), xi.cols());
+
+
+
+
+
+    //equation 10
+        float xi_hat_s_k, mu_s_k,mu_t_k,sigma_st_k,inv_sigma_t_k,sigma_hat_s_k,
+                sigma_s_k, sigma_t_k,sigma_ts_k, xi_t, beta_k,xi_hat_s,beta_k_sum, beta_k_xi_hat_s_k_sum;
+        for(std::size_t i=0;i<xi.rows();i++)
+        {
+            beta_k_sum=0;
+            beta_k_xi_hat_s_k_sum=0;
+            for(std::size_t k=0;k<means.size();k++)
+            {
+                mu_t_k=means.at(k)(0);
+                mu_s_k=means.at(k)(1);
+                sigma_st_k=covariances.at(k)(1,0);
+                sigma_t_k=covariances.at(k)(0,0);
+                inv_sigma_t_k=1/sigma_t_k;
+                sigma_s_k=covariances.at(k)(1,1);
+                sigma_ts_k=covariances.at(k)(0,1);
+                xi_t=xi(i,0);
+
+
+                xi_hat_s_k=mu_s_k+ sigma_st_k*inv_sigma_t_k*(xi_t -mu_t_k);
+                sigma_hat_s_k=sigma_s_k -sigma_st_k*inv_sigma_t_k*sigma_ts_k;
+
+
+                //equation 11
+
+                X.resize(1,1);
+                mean.resize(1,1);
+                covariance.resize(1,1);
+
+
+
+                X<<xi_t;
+                mean<<mu_t_k;
+
+                covariance<<sigma_t_k;
+
+
+
+
+                beta_k=weights.at(k) * computeNormalDistributionPDF(X, mean,covariance);
+                beta_k_sum=beta_k_sum+beta_k;
+
+                xi_hat_s=beta_k*xi_hat_s_k;
+                beta_k_xi_hat_s_k_sum=beta_k_xi_hat_s_k_sum+xi_hat_s;
+            }
+            out_xi(i,1)=beta_k_xi_hat_s_k_sum/beta_k_sum;
+        }
+
+
+        std::cout<< "-------------------------------------"   <<std::endl;
+
+//        std::cout<< "out_xi:"  <<out_xi <<std::endl;
+
+
+//        std::cout<< "out_xi.rows():"  <<out_xi.rows() <<std::endl;
+//        std::cout<< "out_xi.cols():"  <<out_xi.cols() <<std::endl;
+
+
+        std::cout<< "out_xi:"  <<std::endl;
+        for(std::size_t i=0;i<out_xi.rows()/6;i++)
+        {
+            std::cout<< out_xi(i,1) <<" , ";
+        }
+
+
+    }
+
+
 };
 
 int main(int argc,char ** argv)
