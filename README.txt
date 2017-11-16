@@ -1,3 +1,9 @@
+2017 11 16
+Author: Behnam
+Added the Gaussian Mixture Regression (GMR) to the code
+
+  The code has been implemented from http://www.calinon.ch/papers/Calinon-JSMC2007.pdf
+
 2015 06 26
 
 Author: Riccardo Monica <rmonica[at]ce.unipr.it>
